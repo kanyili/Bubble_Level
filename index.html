@@ -2,576 +2,583 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>平衡極限挑戰 - Tilt Stopwatch</title>
-  <!-- Tailwind CSS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>平衡計時挑戰</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google Fonts: Inter & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
-
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Roboto+Mono:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    /* 基礎與手機體驗優化 - Google Material 明亮主題 */
     * {
-      box-sizing: border-box;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
       -webkit-user-select: none;
     }
 
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100dvh;
-      overflow: hidden;
-      overscroll-behavior: none;
-      touch-action: manipulation;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    body {
+      font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: #F8F9FA;
       color: #202124;
+      overflow: hidden;
+      touch-action: manipulation;
     }
 
     .font-mono-tabular {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Roboto Mono', monospace;
       font-variant-numeric: tabular-nums;
     }
 
-    /* 急促紅光閃爍動畫 (Google 紅 #EA4335 與高對比白底交替，約 9Hz) */
-    @keyframes alarmStrobe {
+    @keyframes alarmFlash {
       0%, 49% {
         background-color: #EA4335;
-        box-shadow: inset 0 0 60px rgba(179, 20, 18, 0.45);
+        color: #FFFFFF;
       }
       50%, 100% {
         background-color: #FFFFFF;
-        box-shadow: inset 0 0 50px rgba(234, 67, 53, 0.35);
+        color: #EA4335;
       }
     }
 
-    .alarm-flashing {
-      animation: alarmStrobe 0.11s infinite linear !important;
+    .alarm-active {
+      animation: alarmFlash 0.16s infinite;
     }
 
-    /* Material 柔和卡片陰影 */
-    .g-card {
-      background-color: #FFFFFF;
-      border: 1px solid #E8EAED;
-      box-shadow: 0 2px 6px rgba(60, 64, 67, 0.08), 0 1px 2px rgba(60, 64, 67, 0.06);
+    .alarm-active .card-surface {
+      background-color: rgba(255, 255, 255, 0.94) !important;
+      border-color: #EA4335 !important;
+      box-shadow: 0 10px 25px rgba(234, 67, 53, 0.35) !important;
     }
 
-    /* 遊戲按鈕動態與觸覺回饋 */
-    .game-btn {
-      transition: transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease, background-color 0.15s ease, opacity 0.2s ease;
+    .alarm-active .alarm-text-override {
+      color: #D93025 !important;
     }
-    .game-btn:active:not(:disabled) {
+
+    .btn-press {
+      transition: transform 0.08s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+    .btn-press:active {
       transform: scale(0.97);
-    }
-    .game-btn:disabled {
-      background: #E8EAED !important;
-      color: #9AA0A6 !important;
-      border-color: #DADCE0 !important;
-      box-shadow: none !important;
-      cursor: not-allowed;
-    }
-
-    /* 進度環平滑過渡 */
-    .ring-transition {
-      transition: stroke-dashoffset 0.05s linear, stroke 0.2s ease;
     }
   </style>
 </head>
-<body class="flex flex-col justify-between items-center relative">
+<body id="app-body" class="h-[100dvh] w-screen flex flex-col justify-between">
 
-  <!-- 頂部 Google 經典四色裝飾條 (藍 #4285F4 / 紅 #EA4335 / 黃 #FBBC05 / 綠 #34A853) -->
-  <div class="w-full h-1.5 grid grid-cols-4 shrink-0 z-10">
-    <div class="bg-[#4285F4]"></div>
-    <div class="bg-[#EA4335]"></div>
-    <div class="bg-[#FBBC05]"></div>
-    <div class="bg-[#34A853]"></div>
+  <!-- Google 四色頂部裝飾條 -->
+  <div class="w-full h-1.5 flex shrink-0">
+    <div class="flex-1 bg-[#4285F4]"></div>
+    <div class="flex-1 bg-[#EA4335]"></div>
+    <div class="flex-1 bg-[#FBBC05]"></div>
+    <div class="flex-1 bg-[#34A853]"></div>
   </div>
 
-  <!-- 主視覺容器 (100dvh 響應式佈局，專為手機單手/雙手操作設計) -->
-  <div id="appRoot" class="w-full flex-1 max-w-md mx-auto flex flex-col justify-between px-4 py-3 sm:py-5 transition-colors duration-150 overflow-hidden">
+  <!-- iOS 自動權限引導遮罩（僅在需要使用者手勢觸發權限時顯示） -->
+  <div id="ios-permission-overlay" class="hidden fixed inset-0 z-50 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+    <div class="w-16 h-16 rounded-full bg-[#E8F0FE] text-[#4285F4] flex items-center justify-center mb-5 shadow-sm">
+      <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+    </div>
+    <h2 class="text-2xl font-black text-[#202124] mb-2">啟動手機傾角偵測</h2>
+    <p class="text-base text-[#5F6368] mb-7 max-w-xs leading-relaxed">
+      輕點下方按鈕允許讀取動作與方向感測器，即可即時顯示手機傾斜角度
+    </p>
+    <button id="btn-grant-ios" class="btn-press w-full max-w-xs py-4 px-6 rounded-2xl bg-[#4285F4] text-white font-bold text-lg shadow-md">
+      點此啟動感測器
+    </button>
+  </div>
 
-    <!-- 中央核心儀表與碼表區 (已移除上方標題與感測器狀態列，釋放空間給主要呈現區) -->
-    <main class="flex-1 w-full flex flex-col items-center justify-evenly my-1 relative">
+  <!-- 主要內容區（無頂部標題與狀態欄，空間完整留給數據呈現） -->
+  <main class="flex-1 flex flex-col justify-center gap-4 px-4 pt-3 pb-2 max-w-md w-full mx-auto overflow-hidden">
 
-      <!-- 狀態橫幅提示膠囊 -->
-      <div id="phaseBadge" class="px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wide bg-[#E6F4EA] text-[#137333] border border-[#CEEAD6] shadow-sm">
-        預設上限 30.0°：可直接按「開始挑戰」
+    <!-- 1. 傾斜上限卡片（放大文字與數字） -->
+    <section class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-4 flex items-center justify-between">
+      <div class="flex flex-col">
+        <span class="alarm-text-override text-xl sm:text-2xl font-black text-[#202124] tracking-tight">傾斜上限</span>
+        <span id="limit-subtext" class="text-xs sm:text-sm font-medium text-[#5F6368] mt-0.5">超過此角度即觸發警報</span>
+      </div>
+      <div class="flex items-baseline">
+        <span id="limit-angle-display" class="alarm-text-override font-mono-tabular text-5xl sm:text-6xl font-bold text-[#34A853] tracking-tight">30.0</span>
+        <span class="alarm-text-override text-2xl sm:text-3xl font-bold text-[#34A853] ml-0.5">°</span>
+      </div>
+    </section>
+
+    <!-- 2. 當前最新傾斜角度卡片 -->
+    <section class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-5 flex flex-col items-center justify-center relative">
+      <span class="alarm-text-override text-sm sm:text-base font-bold text-[#5F6368] tracking-wide mb-1">當前最新傾斜角度</span>
+      <div class="flex items-baseline justify-center my-1">
+        <span id="current-angle-display" class="alarm-text-override font-mono-tabular text-6xl sm:text-7xl font-bold text-[#202124] tracking-tight">--.-</span>
+        <span class="alarm-text-override text-3xl sm:text-4xl font-bold text-[#5F6368] ml-1">°</span>
       </div>
 
-      <!-- 放大醒目的「傾斜上限」專屬顯示卡片 -->
-      <div class="g-card w-full rounded-3xl py-3.5 px-5 flex items-center justify-between">
-        <div class="flex flex-col text-left">
-          <span class="text-lg sm:text-xl font-extrabold text-[#202124] tracking-tight">傾斜上限</span>
-          <span class="text-xs font-medium text-[#5F6368]">超過此角度即刻停止</span>
+      <!-- 角度比例視覺條 -->
+      <div class="w-full mt-3">
+        <div class="w-full h-3 bg-[#F1F3F4] rounded-full overflow-hidden">
+          <div id="angle-progress-bar" class="h-full bg-[#4285F4] rounded-full transition-all duration-75" style="width: 0%;"></div>
         </div>
-        <div id="limitAngleDisplay" class="font-mono-tabular text-4xl sm:text-5xl font-black text-[#137333] tracking-tight">
-          30.0°
+        <div class="flex justify-between text-xs font-medium text-[#80868B] mt-1.5 px-0.5">
+          <span>0° 水平</span>
+          <span id="bar-limit-label">上限 30.0°</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 3秒穩定倒數 / 碼表計時 / 5秒警報 主顯示區 -->
+    <section id="timer-card" class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-5 flex flex-col items-center justify-center flex-1 max-h-56">
+      <div id="phase-badge" class="px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#E8F0FE] text-[#1967D2] mb-2">
+        準備就緒
+      </div>
+
+      <!-- 碼表時間 (分:秒:毫秒) -->
+      <div id="stopwatch-display" class="alarm-text-override font-mono-tabular text-4xl sm:text-5xl font-bold text-[#202124] tracking-tight my-1">
+        00:00.000
+      </div>
+
+      <!-- 3秒穩定準備進度條（僅在準備期顯示） -->
+      <div id="calib-bar-wrap" class="hidden w-full max-w-xs mt-2">
+        <div class="w-full h-2.5 bg-[#E8F0FE] rounded-full overflow-hidden">
+          <div id="calib-progress-bar" class="h-full bg-[#FBBC05] rounded-full" style="width: 0%;"></div>
         </div>
       </div>
 
-      <!-- 圓形視覺傾角與倒數進度環卡片 -->
-      <div class="g-card relative w-60 h-60 sm:w-68 sm:h-68 rounded-full flex items-center justify-center p-2">
-        <!-- SVG 進度環 -->
-        <svg class="w-full h-full -rotate-90 transform" viewBox="0 0 260 260">
-          <!-- 背景底環 -->
-          <circle cx="130" cy="130" r="114" fill="#FFFFFF" stroke="#F1F3F4" stroke-width="14" />
-          <!-- 動態進度環 (用於 3 秒穩定倒數 & 角度比例指示) -->
-          <circle id="progressRing" class="ring-transition" cx="130" cy="130" r="114" fill="none"
-                  stroke="#4285F4" stroke-width="14" stroke-linecap="round"
-                  stroke-dasharray="716.28" stroke-dashoffset="716.28" />
-        </svg>
+      <p id="phase-hint" class="alarm-text-override text-xs sm:text-sm font-medium text-[#5F6368] mt-2 text-center">
+        維持傾斜小於上限滿 3 秒自動鳴笛計時
+      </p>
+    </section>
 
-        <!-- 圓環中央資訊疊層 -->
-        <div class="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
-          <span class="text-xs sm:text-sm font-semibold tracking-wider text-[#5F6368] mb-0.5">目前傾斜角度</span>
-          <div id="currentAngleDisplay" class="font-mono-tabular text-5xl sm:text-6xl font-extrabold text-[#202124] tracking-tight">
-            0.0°
-          </div>
+  </main>
 
-          <!-- 3秒穩定倒數顯示 (僅在 CALIBRATING 顯示) -->
-          <div id="calibrateSubBox" class="hidden mt-2 bg-[#E6F4EA] border border-[#CEEAD6] px-3.5 py-0.5 rounded-full">
-            <span id="calibrateTimerText" class="font-mono-tabular text-xl font-black text-[#1E8E3E]">3.0s</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 碼表計時主顯示卡片 (MM:SS.mmm) -->
-      <div class="g-card w-full rounded-3xl py-3.5 px-5 flex flex-col items-center">
-        <div class="w-full flex items-center justify-between text-xs font-semibold text-[#5F6368] mb-1 px-1">
-          <span>計時碼表 (分:秒:毫秒)</span>
-          <span id="triggerAngleNote" class="text-[#D93025] font-mono-tabular font-bold hidden">觸發時: 0.0°</span>
-        </div>
-        <div id="stopwatchDisplay" class="font-mono-tabular text-4xl sm:text-5xl font-extrabold tracking-tight text-[#202124]">
-          00:00.000
-        </div>
-        <p id="instructionText" class="text-xs sm:text-sm text-center text-[#5F6368] mt-1.5 min-h-[1.25rem] font-medium leading-snug">
-          預設上限 30.0°，可按左鍵「重設傾斜上限」或右鍵「開始挑戰」
-        </p>
-      </div>
-    </main>
-
-    <!-- 底部操作按鈕區 -->
-    <footer class="w-full pb-2 shrink-0">
-      <!-- 初始狀態：同一水平列一左一右等寬並排雙按鈕 -->
-      <div id="idleControls" class="w-full grid grid-cols-2 gap-3">
-        <!-- 左側按鈕：重設傾斜上限 (Google 綠主題) -->
-        <button id="setLimitBtn" type="button"
-                class="game-btn w-full py-4 px-2.5 rounded-2xl font-extrabold text-sm sm:text-base tracking-tight bg-[#34A853] hover:bg-[#2E9549] text-white shadow-md shadow-[#34A853]/25 border border-[#2D9348] flex items-center justify-center text-center leading-tight">
-          重設傾斜上限
-        </button>
-
-        <!-- 右側按鈕：開始挑戰 (Google 藍主題) -->
-        <button id="startBtn" type="button"
-                class="game-btn w-full py-4 px-2.5 rounded-2xl font-extrabold text-base sm:text-lg tracking-wide bg-[#4285F4] hover:bg-[#3367D6] text-white shadow-md shadow-[#4285F4]/25 border border-[#3B78E7] flex items-center justify-center text-center leading-tight">
-          開始挑戰
-        </button>
-      </div>
-
-      <!-- 校準中或計時中的狀態提示條（防誤觸鎖定，保持高度一致避免畫面跳動） -->
-      <div id="activeStatusBar" class="hidden w-full py-4 px-4 rounded-2xl bg-white border border-[#DADCE0] shadow-sm text-center">
-        <span id="activeStatusLabel" class="text-sm sm:text-base font-bold text-[#1E8E3E] tracking-wide">
-          保持穩定滿 3 秒自動鳴笛開始...
-        </span>
-      </div>
-
-      <!-- 5秒警報結束後的全寬「重新開始」按鈕 -->
-      <button id="restartBtn" type="button"
-              class="hidden game-btn w-full py-4 px-5 rounded-2xl font-extrabold text-base sm:text-lg tracking-wider bg-[#4285F4] hover:bg-[#3367D6] text-white shadow-md shadow-[#4285F4]/30 border border-[#3B78E7]">
-        重新開始
+  <!-- 底部操作按鈕列 -->
+  <footer class="px-4 pb-5 pt-2 max-w-md w-full mx-auto shrink-0">
+    <!-- 待機狀態：一左一右水平並排 -->
+    <div id="idle-controls" class="grid grid-cols-2 gap-3">
+      <button id="btn-reset-limit" class="btn-press py-4 px-3 rounded-2xl bg-[#34A853] hover:bg-[#2E9549] text-white font-bold text-base sm:text-lg shadow-sm flex items-center justify-center text-center leading-snug">
+        重設傾斜上限
       </button>
-    </footer>
+      <button id="btn-start" class="btn-press py-4 px-3 rounded-2xl bg-[#4285F4] hover:bg-[#3367D6] text-white font-bold text-base sm:text-lg shadow-sm flex items-center justify-center text-center leading-snug">
+        開始挑戰
+      </button>
+    </div>
 
-  </div>
+    <!-- 進行中提示（準備期 / 計時中 / 5秒警報鎖定期間） -->
+    <div id="active-status-bar" class="hidden py-4 px-4 rounded-2xl bg-white border border-[#DADCE0] text-center font-bold text-base text-[#5F6368]">
+      偵測進行中...
+    </div>
+
+    <!-- 5秒警報結束後：重新開始按鈕 -->
+    <button id="btn-restart" class="hidden btn-press w-full py-4 px-6 rounded-2xl bg-[#4285F4] hover:bg-[#3367D6] text-white font-bold text-lg shadow-md">
+      重新開始
+    </button>
+  </footer>
 
   <script>
-    /**
-     * 遊戲狀態定義
-     * IDLE: 初始待機，顯示即時角度，可設定傾斜上限與按下開始
-     * CALIBRATING: 連續維持在傾斜上限內 3.0 秒準備期
-     * RUNNING: 起跑號角響起，正式碼表計時中
-     * ALARM: 超出傾斜上限，碼表凍結，整片紅閃 + 急促蜂鳴 5 秒鎖定
-     * GAME_OVER: 5 秒警示結束，顯示最終成績與「重新開始」按鈕
-     */
-    const GAME_STATE = {
-      IDLE: 'IDLE',
-      CALIBRATING: 'CALIBRATING',
-      RUNNING: 'RUNNING',
-      ALARM: 'ALARM',
-      GAME_OVER: 'GAME_OVER'
-    };
+    (() => {
+      // ===== 遊戲核心狀態 =====
+      const STATE = {
+        IDLE: 'IDLE',
+        CALIBRATING: 'CALIBRATING',
+        RUNNING: 'RUNNING',
+        ALARM: 'ALARM',
+        GAME_OVER: 'GAME_OVER'
+      };
 
-    // 核心狀態變數
-    const DEFAULT_TILT_LIMIT = 30.0; // 預設傾斜上限 30 度
-    let currentState = GAME_STATE.IDLE;
-    let currentTiltDeg = 0.0;        // 經過低通濾波的總傾斜角度 (0° ~ 90°)
-    let rawTiltDeg = 0.0;            // 原始感測計算角度
-    let tiltLimitDeg = DEFAULT_TILT_LIMIT; // 傾斜角度上限 (預設 30.0°)
+      let gameState = STATE.IDLE;
+      let tiltLimit = 30.0;        // 預設傾斜上限 30 度
+      let currentTilt = null;      // 當前最新傾斜角度 (0 ~ 90)
+      let smoothedTilt = null;     // 輕微低通濾波抑制感測器高頻抖動
+      let sensorActive = false;
 
-    // 感測器狀態
-    let sensorActive = false;
-    let usingRealMotionSensor = false;
-    let hasFilteredInit = false;
-    const FILTER_ALPHA = 0.28;       // 低通濾波係數 (兼顧靈敏度與抗手抖)
+      // 計時相關變數
+      let calibStartTime = 0;
+      let runStartTime = 0;
+      let elapsedMs = 0;
+      let rafId = null;
+      let alarmTimeoutId = null;
+      let alarmBeepIntervalId = null;
 
-    // 計時與動畫控制
-    const CALIBRATE_REQUIRED_MS = 3000; // 需連續保持穩定 3 秒
-    const ALARM_DURATION_MS = 5000;     // 失敗紅閃蜂鳴鎖定 5 秒
-    let calibrateStartTime = null;
-    let runStartTime = null;
-    let finalElapsedMs = 0;
-    let alarmEndTimeout = null;
-    let rafId = null;
+      // ===== DOM 元素參照 =====
+      const appBody = document.getElementById('app-body');
+      const iosOverlay = document.getElementById('ios-permission-overlay');
+      const btnGrantIos = document.getElementById('btn-grant-ios');
 
-    // Web Audio API & Wake Lock
-    let audioCtx = null;
-    let alarmIntervalId = null;
-    let wakeLockSentinel = null;
+      const limitAngleDisplay = document.getElementById('limit-angle-display');
+      const barLimitLabel = document.getElementById('bar-limit-label');
+      const currentAngleDisplay = document.getElementById('current-angle-display');
+      const angleProgressBar = document.getElementById('angle-progress-bar');
 
-    // 圓環周長 (r = 114 -> 2 * PI * 114 ≈ 716.28)
-    const RING_CIRCUMFERENCE = 2 * Math.PI * 114;
+      const phaseBadge = document.getElementById('phase-badge');
+      const stopwatchDisplay = document.getElementById('stopwatch-display');
+      const calibBarWrap = document.getElementById('calib-bar-wrap');
+      const calibProgressBar = document.getElementById('calib-progress-bar');
+      const phaseHint = document.getElementById('phase-hint');
 
-    // DOM 元素快取
-    const el = {
-      appRoot: document.getElementById('appRoot'),
-      phaseBadge: document.getElementById('phaseBadge'),
-      progressRing: document.getElementById('progressRing'),
-      currentAngleDisplay: document.getElementById('currentAngleDisplay'),
-      limitAngleDisplay: document.getElementById('limitAngleDisplay'),
-      calibrateSubBox: document.getElementById('calibrateSubBox'),
-      calibrateTimerText: document.getElementById('calibrateTimerText'),
-      stopwatchDisplay: document.getElementById('stopwatchDisplay'),
-      triggerAngleNote: document.getElementById('triggerAngleNote'),
-      instructionText: document.getElementById('instructionText'),
-      idleControls: document.getElementById('idleControls'),
-      setLimitBtn: document.getElementById('setLimitBtn'),
-      startBtn: document.getElementById('startBtn'),
-      activeStatusBar: document.getElementById('activeStatusBar'),
-      activeStatusLabel: document.getElementById('activeStatusLabel'),
-      restartBtn: document.getElementById('restartBtn')
-    };
-// ... existing code ... -->
-      try {
-        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-          const motionRes = await DeviceMotionEvent.requestPermission();
-          if (motionRes !== 'granted') {
-            el.instructionText.textContent = '請在系統設定允許動作與方向感測權限';
-            return false;
+      const idleControls = document.getElementById('idle-controls');
+      const btnResetLimit = document.getElementById('btn-reset-limit');
+      const btnStart = document.getElementById('btn-start');
+      const activeStatusBar = document.getElementById('active-status-bar');
+      const btnRestart = document.getElementById('btn-restart');
+
+      // ===== Web Audio API 音效引擎（起跑號角 & 急促蜂鳴） =====
+      let audioCtx = null;
+
+      function ensureAudioContext() {
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
           }
         }
-
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-          try {
-            await DeviceOrientationEvent.requestPermission();
-          } catch (e) {
-            // 忽略 orientation 權限錯誤，主要依賴 DeviceMotion
-          }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
         }
-
-        bindSensorListeners();
-        return true;
-      } catch (err) {
-        console.warn('感測器權限請求異常:', err);
-        bindSensorListeners();
-        return true;
-      }
-    }
-
-    /**
-     * 綁定 DeviceMotion 與 DeviceOrientation 事件
-     */
-    function bindSensorListeners() {
-      if (sensorActive) return;
-      sensorActive = true;
-
-      window.addEventListener('devicemotion', handleDeviceMotion, { passive: true });
-      window.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true });
-    }
-
-    /**
-     * 處理重力加速度數據 -> 計算相對於完全水平面的真實總傾斜角度 (0° ~ 90°)
-     */
-    function handleDeviceMotion(event) {
-      const acc = event.accelerationIncludingGravity;
-      if (!acc || (acc.x === null && acc.y === null && acc.z === null)) return;
-
-      const x = acc.x || 0;
-      const y = acc.y || 0;
-      const z = acc.z || 0;
-      const magnitude = Math.sqrt(x * x + y * y + z * z);
-
-      if (magnitude < 0.1) return;
-
-      usingRealMotionSensor = true;
-
-      const cosTheta = Math.min(1, Math.max(0, Math.abs(z) / magnitude));
-      const deg = Math.acos(cosTheta) * (180 / Math.PI);
-
-      applyFilteredTilt(deg);
-    }
-
-    /**
-     * 降級備援：若裝置僅回傳歐拉角 (beta / gamma)
-     */
-    function handleDeviceOrientation(event) {
-      if (usingRealMotionSensor) return;
-      if (event.beta === null || event.gamma === null) return;
-
-      const betaRad = (event.beta * Math.PI) / 180;
-      const gammaRad = (event.gamma * Math.PI) / 180;
-      const cosTotal = Math.min(1, Math.max(0, Math.abs(Math.cos(betaRad) * Math.cos(gammaRad))));
-      const deg = Math.acos(cosTotal) * (180 / Math.PI);
-
-      applyFilteredTilt(deg);
-    }
-
-    /**
-     * 套用低通濾波器平滑微幅手抖雜訊
-     */
-    function applyFilteredTilt(newDeg) {
-      rawTiltDeg = Math.min(90, Math.max(0, newDeg));
-      if (!hasFilteredInit) {
-        currentTiltDeg = rawTiltDeg;
-        hasFilteredInit = true;
-      } else {
-        currentTiltDeg = currentTiltDeg + FILTER_ALPHA * (rawTiltDeg - currentTiltDeg);
-      }
-    }
-
-    /* =========================================================================
-       4. 遊戲狀態機與流程控制
-       ========================================================================= */
-// ... existing code ... -->
-    /**
-     * 切換至階段一：IDLE (初始待機)
-     */
-    function enterIdleState(resetLimitToDefault = false) {
-      currentState = GAME_STATE.IDLE;
-      stopAlarmBuzzer();
-      if (alarmEndTimeout) {
-        clearTimeout(alarmEndTimeout);
-        alarmEndTimeout = null;
       }
 
-      document.body.classList.remove('alarm-flashing');
+      // 大聲起跑號角音效（雙銅管和弦 + 飽滿增益）
+      function playStartHorn() {
+        ensureAudioContext();
+        if (!audioCtx) return;
 
-      if (resetLimitToDefault) {
-        tiltLimitDeg = DEFAULT_TILT_LIMIT;
+        const now = audioCtx.currentTime;
+        // 起跑號角兩段式鳴響：短促預備音 + 長鳴起跑號角
+        const notes = [
+          { freqs: [440, 554.37, 659.25], start: 0.0, duration: 0.14, gain: 0.45 },
+          { freqs: [587.33, 739.99, 880], start: 0.17, duration: 0.52, gain: 0.55 }
+        ];
+
+        notes.forEach(note => {
+          const masterGain = audioCtx.createGain();
+          masterGain.gain.setValueAtTime(0.001, now + note.start);
+          masterGain.gain.linearRampToValueAtTime(note.gain, now + note.start + 0.02);
+          masterGain.gain.setValueAtTime(note.gain, now + note.start + note.duration - 0.06);
+          masterGain.gain.exponentialRampToValueAtTime(0.001, now + note.start + note.duration);
+
+          // 低通濾波讓鋸齒波更像真實銅管號角
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(2400, now + note.start);
+
+          masterGain.connect(filter);
+          filter.connect(audioCtx.destination);
+
+          note.freqs.forEach(freq => {
+            const osc = audioCtx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(freq, now + note.start);
+            osc.connect(masterGain);
+            osc.start(now + note.start);
+            osc.stop(now + note.start + note.duration + 0.02);
+          });
+        });
       }
 
-      finalElapsedMs = 0;
-      calibrateStartTime = null;
-      runStartTime = null;
-      el.stopwatchDisplay.textContent = '00:00.000';
-      el.stopwatchDisplay.className = 'font-mono-tabular text-4xl sm:text-5xl font-extrabold tracking-tight text-[#202124]';
-      el.triggerAngleNote.classList.add('hidden');
-      el.calibrateSubBox.classList.add('hidden');
+      // 急促蜂鳴警報聲（持續 5 秒）
+      function startAlarmSound() {
+        ensureAudioContext();
+        stopAlarmSound();
 
-      el.limitAngleDisplay.textContent = `${tiltLimitDeg.toFixed(1)}°`;
-      el.limitAngleDisplay.className = 'font-mono-tabular text-4xl sm:text-5xl font-black text-[#137333] tracking-tight';
+        const triggerSingleBeep = () => {
+          if (!audioCtx) return;
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
 
-      el.phaseBadge.textContent = `傾斜上限 ${tiltLimitDeg.toFixed(1)}°：準備就緒`;
-      el.phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wide bg-[#E6F4EA] text-[#137333] border border-[#CEEAD6] shadow-sm';
-      el.instructionText.textContent = `上限為 ${tiltLimitDeg.toFixed(1)}°，可按左鍵「重設傾斜上限」或右鍵「開始挑戰」`;
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(980, now);
+          osc.frequency.setValueAtTime(760, now + 0.055);
 
-      el.idleControls.classList.remove('hidden');
-      el.activeStatusBar.classList.add('hidden');
-      el.restartBtn.classList.add('hidden');
+          gain.gain.setValueAtTime(0.42, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
 
-      el.startBtn.disabled = false;
-      setRingProgress(0, '#4285F4');
-    }
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
 
-    /**
-     * 按下左側「重設傾斜上限」
-     */
-    async function handleSetLimit() {
-      await ensureSensorPermission();
-      if (currentState !== GAME_STATE.IDLE) return;
+          osc.start(now);
+          osc.stop(now + 0.115);
+        };
 
-      const captured = Math.max(0.5, Number(currentTiltDeg.toFixed(1)));
-      tiltLimitDeg = captured;
-
-      el.limitAngleDisplay.textContent = `${tiltLimitDeg.toFixed(1)}°`;
-      el.limitAngleDisplay.className = 'font-mono-tabular text-4xl sm:text-5xl font-black text-[#1A73E8] tracking-tight';
-
-      el.phaseBadge.textContent = `已重設傾斜上限為 ${tiltLimitDeg.toFixed(1)}°！`;
-      el.phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wide bg-[#E8F0FE] text-[#1A73E8] border border-[#D2E3FC] shadow-sm';
-
-      el.instructionText.textContent = `新上限為 ${tiltLimitDeg.toFixed(1)}°（按左鍵可再重設，按右鍵開始）`;
-      el.startBtn.disabled = false;
-    }
-
-    /**
-     * 按下右側「開始挑戰」 -> 進入階段二：CALIBRATING (連續 3 秒穩定準備期)
-     */
-    async function handleStartGame() {
-      await ensureSensorPermission();
-      if (currentState !== GAME_STATE.IDLE) return;
-
-      currentState = GAME_STATE.CALIBRATING;
-      calibrateStartTime = null;
-
-      el.idleControls.classList.add('hidden');
-      el.restartBtn.classList.add('hidden');
-      el.activeStatusBar.classList.remove('hidden');
-      el.calibrateSubBox.classList.remove('hidden');
-
-      el.phaseBadge.textContent = '準備期：連續保持穩定 3 秒';
-      el.phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wide bg-[#FEF7E0] text-[#B06000] border border-[#FEEFC3] shadow-sm';
-      el.activeStatusLabel.textContent = '保持在上限角度內滿 3 秒...';
-      el.activeStatusLabel.className = 'text-sm sm:text-base font-bold text-[#B06000] tracking-wide';
-    }
-
-    /**
-     * 進入階段三：RUNNING (起跑號角 + 正式碼表計時)
-     */
-    function enterRunningState(now) {
-      currentState = GAME_STATE.RUNNING;
-      runStartTime = now;
-
-      // 吹響大聲起跑號角音效
-      playStartHorn();
-
-      el.calibrateSubBox.classList.add('hidden');
-      el.phaseBadge.textContent = '計時中！請勿超過傾斜上限';
-      el.phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wide bg-[#E6F4EA] text-[#137333] border border-[#CEEAD6] shadow-sm';
-
-      el.stopwatchDisplay.className = 'font-mono-tabular text-4xl sm:text-5xl font-extrabold tracking-tight text-[#1E8E3E]';
-      el.instructionText.textContent = `保持傾斜角度 ≤ ${tiltLimitDeg.toFixed(1)}°！超過即刻停止`;
-      el.activeStatusLabel.textContent = '挑戰進行中（超過上限將鳴笛警示）';
-      el.activeStatusLabel.className = 'text-sm sm:text-base font-bold text-[#1E8E3E] tracking-wide';
-    }
-
-    /**
-     * 進入階段四：ALARM (超出上限！碼表停止 + 急促紅閃 + 急促蜂鳴 5 秒鎖定)
-     */
-    function enterAlarmState(now, triggerDeg) {
-      currentState = GAME_STATE.ALARM;
-      finalElapsedMs = now - runStartTime;
-
-      // 凍結碼表成績
-      el.stopwatchDisplay.textContent = formatStopwatch(finalElapsedMs);
-      el.stopwatchDisplay.className = 'font-mono-tabular text-4xl sm:text-5xl font-extrabold tracking-tight text-[#D93025]';
-
-      // 顯示觸發失敗當下的角度
-      el.triggerAngleNote.textContent = `觸發傾角: ${triggerDeg.toFixed(1)}° (> ${tiltLimitDeg.toFixed(1)}°)`;
-      el.triggerAngleNote.classList.remove('hidden');
-
-      // 啟動整片急促紅光閃爍 & 急促蜂鳴 5 秒
-      document.body.classList.add('alarm-flashing');
-      startAlarmBuzzer();
-
-      el.phaseBadge.textContent = '超出傾斜上限！挑戰失敗';
-      el.phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs sm:text-sm font-black tracking-wide bg-[#D93025] text-white border border-[#B31412] shadow';
-      el.instructionText.textContent = '警示鎖定 5 秒鐘，請稍候...';
-      el.activeStatusLabel.textContent = '失衡警報鳴響中 (5 秒鎖定)';
-      el.activeStatusLabel.className = 'text-sm sm:text-base font-black text-[#D93025] tracking-wide';
-
-      setRingProgress(1, '#EA4335');
-
-      // 鎖定滿 5.0 秒後自動切換到階段五 (GAME_OVER)
-      alarmEndTimeout = setTimeout(() => {
-        enterGameOverState();
-      }, ALARM_DURATION_MS);
-    }
-
-    /**
-     * 進入階段五：GAME_OVER (5 秒警示結束，下方出現「重新開始」按鈕)
-     */
-    function enterGameOverState() {
-      currentState = GAME_STATE.GAME_OVER;
-
-      document.body.classList.remove('alarm-flashing');
-      stopAlarmBuzzer();
-
-      el.phaseBadge.textContent = '挑戰結束 - 最終成績';
-      el.phaseBadge.className = 'px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wide bg-[#FCE8E6] text-[#C5221F] border border-[#FAD2CF] shadow-sm';
-      el.stopwatchDisplay.className = 'font-mono-tabular text-4xl sm:text-5xl font-extrabold tracking-tight text-[#D93025]';
-      el.instructionText.textContent = '點擊下方「重新開始」回到初始畫面';
-
-      el.activeStatusBar.classList.add('hidden');
-      el.restartBtn.classList.remove('hidden');
-    }
-
-    /* =========================================================================
-       5. 主動畫與高頻判定迴圈 (requestAnimationFrame)
-       ========================================================================= */
-    function mainLoop(now) {
-      el.currentAngleDisplay.textContent = `${currentTiltDeg.toFixed(1)}°`;
-
-      if (currentState === GAME_STATE.IDLE) {
-        const refMax = tiltLimitDeg > 0 ? tiltLimitDeg : DEFAULT_TILT_LIMIT;
-        const ratio = currentTiltDeg / refMax;
-        const isOver = currentTiltDeg > tiltLimitDeg;
-        setRingProgress(Math.min(1, ratio), isOver ? '#EA4335' : '#4285F4');
-        el.currentAngleDisplay.className = `font-mono-tabular text-5xl sm:text-6xl font-extrabold tracking-tight ${isOver ? 'text-[#D93025]' : 'text-[#202124]'}`;
+        triggerSingleBeep();
+        alarmBeepIntervalId = setInterval(triggerSingleBeep, 150);
       }
-      else if (currentState === GAME_STATE.CALIBRATING) {
-        if (currentTiltDeg <= tiltLimitDeg) {
-          if (calibrateStartTime === null) {
-            calibrateStartTime = now;
-          }
-          const heldMs = now - calibrateStartTime;
-          const remainingSec = Math.max(0, (CALIBRATE_REQUIRED_MS - heldMs) / 1000);
-          const progress = heldMs / CALIBRATE_REQUIRED_MS;
 
-          el.calibrateTimerText.textContent = `${remainingSec.toFixed(1)}s`;
-          el.calibrateTimerText.className = 'font-mono-tabular text-xl font-black text-[#1E8E3E]';
-          el.currentAngleDisplay.className = 'font-mono-tabular text-5xl sm:text-6xl font-extrabold tracking-tight text-[#1E8E3E]';
-          el.instructionText.textContent = `保持穩定！還需維持 ${remainingSec.toFixed(1)} 秒...`;
-          setRingProgress(progress, '#34A853');
+      function stopAlarmSound() {
+        if (alarmBeepIntervalId) {
+          clearInterval(alarmBeepIntervalId);
+          alarmBeepIntervalId = null;
+        }
+      }
 
-          if (heldMs >= CALIBRATE_REQUIRED_MS) {
-            enterRunningState(now);
-          }
+      // ===== 感測器計算與權限啟動 =====
+      function updateTiltReading(rawAngle) {
+        if (typeof rawAngle !== 'number' || Number.isNaN(rawAngle)) return;
+        const clamped = Math.max(0, Math.min(90, rawAngle));
+
+        // 輕微平滑處理，保留靈敏度同時過濾手部微顫噪點
+        if (smoothedTilt === null) {
+          smoothedTilt = clamped;
         } else {
-          // 中途超出傾斜角度上限 -> 3 秒歸零重算
-          calibrateStartTime = null;
-          el.calibrateTimerText.textContent = '3.0s';
-          el.calibrateTimerText.className = 'font-mono-tabular text-xl font-black text-[#D93025]';
-          el.currentAngleDisplay.className = 'font-mono-tabular text-5xl sm:text-6xl font-extrabold tracking-tight text-[#D93025]';
-          el.instructionText.textContent = `超出上限 (${tiltLimitDeg.toFixed(1)}°)！請回穩重新計算 3 秒`;
-          setRingProgress(0, '#FBBC05');
+          smoothedTilt = smoothedTilt * 0.25 + clamped * 0.75;
+        }
+        currentTilt = smoothedTilt;
+        sensorActive = true;
+
+        renderAngleUI();
+      }
+
+      // 透過重力加速度向量計算相對於完全水平面的真實總傾斜角度 (0° ~ 90°)
+      function handleDeviceMotion(event) {
+        const acc = event.accelerationIncludingGravity;
+        if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
+
+        const { x, y, z } = acc;
+        const magnitude = Math.sqrt(x * x + y * y + z * z);
+        if (magnitude < 0.1) return;
+
+        // |z| / magnitude = cos(總傾斜角)
+        const cosTheta = Math.max(-1, Math.min(1, Math.abs(z) / magnitude));
+        const angleDeg = (Math.acos(cosTheta) * 180) / Math.PI;
+        updateTiltReading(angleDeg);
+      }
+
+      // 備援：若部分裝置僅提供 deviceorientation (beta / gamma)
+      function handleDeviceOrientation(event) {
+        if (sensorActive) return;
+        if (event.beta === null || event.gamma === null) return;
+
+        const betaRad = (event.beta * Math.PI) / 180;
+        const gammaRad = (event.gamma * Math.PI) / 180;
+        const cosTheta = Math.max(
+          -1,
+          Math.min(1, Math.abs(Math.cos(betaRad) * Math.cos(gammaRad)))
+        );
+        const angleDeg = (Math.acos(cosTheta) * 180) / Math.PI;
+        updateTiltReading(angleDeg);
+      }
+
+      function attachSensorListeners() {
+        window.addEventListener('devicemotion', handleDeviceMotion, true);
+        window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+      }
+
+      async function requestSensorsOnLoad() {
+        const needsIosMotionPerm =
+          typeof DeviceMotionEvent !== 'undefined' &&
+          typeof DeviceMotionEvent.requestPermission === 'function';
+
+        const needsIosOrientPerm =
+          typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function';
+
+        if (needsIosMotionPerm || needsIosOrientPerm) {
+          // iOS 13+ 必須在使用者點擊事件中呼叫 requestPermission()
+          iosOverlay.classList.remove('hidden');
+        } else {
+          // Android / 一般支援免彈窗的行動瀏覽器：進入頁面立刻啟動並持續顯示最新角度
+          attachSensorListeners();
         }
       }
-      else if (currentState === GAME_STATE.RUNNING) {
-        const elapsed = now - runStartTime;
-        el.stopwatchDisplay.textContent = formatStopwatch(elapsed);
 
-        const dangerRatio = tiltLimitDeg > 0 ? currentTiltDeg / tiltLimitDeg : 1;
-        setRingProgress(Math.min(1, dangerRatio), dangerRatio > 0.85 ? '#FBBC05' : '#34A853');
-
-        // 只要往任何方向傾斜超過上限角度，立刻觸發失敗
-        if (currentTiltDeg > tiltLimitDeg) {
-          enterAlarmState(now, currentTiltDeg);
+      async function grantIosSensors() {
+        ensureAudioContext();
+        try {
+          if (
+            typeof DeviceMotionEvent !== 'undefined' &&
+            typeof DeviceMotionEvent.requestPermission === 'function'
+          ) {
+            const res = await DeviceMotionEvent.requestPermission();
+            if (res === 'granted') {
+              attachSensorListeners();
+            }
+          }
+          if (
+            typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function'
+          ) {
+            await DeviceOrientationEvent.requestPermission().catch(() => {});
+            attachSensorListeners();
+          }
+        } catch (err) {
+          console.warn('Sensor permission error:', err);
+        } finally {
+          iosOverlay.classList.add('hidden');
         }
       }
 
-      rafId = requestAnimationFrame(mainLoop);
-    }
+      // ===== 畫面更新與格式化 =====
+      function formatStopwatch(ms) {
+        const totalMs = Math.max(0, Math.floor(ms));
+        const minutes = Math.floor(totalMs / 60000);
+        const seconds = Math.floor((totalMs % 60000) / 1000);
+        const millis = totalMs % 1000;
 
-    /* =========================================================================
-       6. 事件綁定與初始化
-       ========================================================================= */
-    el.setLimitBtn.addEventListener('click', handleSetLimit);
-    el.startBtn.addEventListener('click', handleStartGame);
-    el.restartBtn.addEventListener('click', () => {
-      initAndUnlockAudio();
-      enterIdleState(true);
-    });
-
-    window.addEventListener('load', () => {
-      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission !== 'function') {
-        bindSensorListeners();
+        const mm = String(minutes).padStart(2, '0');
+        const ss = String(seconds).padStart(2, '0');
+        const mmm = String(millis).padStart(3, '0');
+        return `${mm}:${ss}.${mmm}`;
       }
-      enterIdleState(true);
-      rafId = requestAnimationFrame(mainLoop);
-    });
+
+      function renderLimitUI() {
+        limitAngleDisplay.textContent = tiltLimit.toFixed(1);
+        barLimitLabel.textContent = `上限 ${tiltLimit.toFixed(1)}°`;
+      }
+
+      function renderAngleUI() {
+        if (currentTilt === null) {
+          currentAngleDisplay.textContent = '--.-';
+          angleProgressBar.style.width = '0%';
+          return;
+        }
+
+        currentAngleDisplay.textContent = currentTilt.toFixed(1);
+
+        const ratio = tiltLimit > 0 ? Math.min(100, (currentTilt / tiltLimit) * 100) : 100;
+        angleProgressBar.style.width = `${ratio}%`;
+
+        if (currentTilt > tiltLimit) {
+          currentAngleDisplay.classList.remove('text-[#202124]');
+          currentAngleDisplay.classList.add('text-[#EA4335]');
+          angleProgressBar.classList.remove('bg-[#4285F4]', 'bg-[#FBBC05]');
+          angleProgressBar.classList.add('bg-[#EA4335]');
+        } else if (currentTilt > tiltLimit * 0.8) {
+          currentAngleDisplay.classList.remove('text-[#EA4335]');
+          currentAngleDisplay.classList.add('text-[#202124]');
+          angleProgressBar.classList.remove('bg-[#4285F4]', 'bg-[#EA4335]');
+          angleProgressBar.classList.add('bg-[#FBBC05]');
+        } else {
+          currentAngleDisplay.classList.remove('text-[#EA4335]');
+          currentAngleDisplay.classList.add('text-[#202124]');
+          angleProgressBar.classList.remove('bg-[#FBBC05]', 'bg-[#EA4335]');
+          angleProgressBar.classList.add('bg-[#4285F4]');
+        }
+      }
+
+      // ===== 遊戲狀態切換 =====
+      function setGameState(nextState) {
+        gameState = nextState;
+
+        // 重置控制列顯示
+        idleControls.classList.add('hidden');
+        activeStatusBar.classList.add('hidden');
+        btnRestart.classList.add('hidden');
+        calibBarWrap.classList.add('hidden');
+        appBody.classList.remove('alarm-active');
+
+        if (nextState === STATE.IDLE) {
+          elapsedMs = 0;
+          stopwatchDisplay.textContent = '00:00.000';
+          phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#E8F0FE] text-[#1967D2] mb-2';
+          phaseBadge.textContent = '準備就緒';
+          phaseHint.textContent = '維持傾斜小於上限滿 3 秒自動鳴笛計時';
+          idleControls.classList.remove('hidden');
+        } else if (nextState === STATE.CALIBRATING) {
+          calibStartTime = 0;
+          stopwatchDisplay.textContent = '3.00 秒';
+          phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#FEF7E0] text-[#B06000] mb-2';
+          phaseBadge.textContent = '穩定倒數中';
+          phaseHint.textContent = `請將手機傾斜維持在 ${tiltLimit.toFixed(1)}° 以內連續 3 秒`;
+          calibBarWrap.classList.remove('hidden');
+          calibProgressBar.style.width = '0%';
+          activeStatusBar.textContent = '保持穩定，滿 3 秒即鳴笛開始...';
+          activeStatusBar.classList.remove('hidden');
+        } else if (nextState === STATE.RUNNING) {
+          runStartTime = performance.now();
+          phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#E6F4EA] text-[#137333] mb-2';
+          phaseBadge.textContent = '計時進行中';
+          phaseHint.textContent = `警戒線：${tiltLimit.toFixed(1)}°（超過即刻停止）`;
+          activeStatusBar.textContent = '計時中！切勿超過傾斜上限';
+          activeStatusBar.classList.remove('hidden');
+          playStartHorn();
+        } else if (nextState === STATE.ALARM) {
+          // 碼表凍結在當下的 elapsedMs
+          stopwatchDisplay.textContent = formatStopwatch(elapsedMs);
+          phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#FCE8E6] text-[#C5221F] mb-2';
+          phaseBadge.textContent = '超過傾斜上限！';
+          phaseHint.textContent = '警報鎖定 5 秒鐘，請稍候...';
+          activeStatusBar.textContent = '警報鳴響中（5 秒）...';
+          activeStatusBar.classList.remove('hidden');
+
+          appBody.classList.add('alarm-active');
+          startAlarmSound();
+
+          // 鎖定 5 秒後進入結算並顯示重新開始按鈕
+          if (alarmTimeoutId) clearTimeout(alarmTimeoutId);
+          alarmTimeoutId = setTimeout(() => {
+            stopAlarmSound();
+            setGameState(STATE.GAME_OVER);
+          }, 5000);
+        } else if (nextState === STATE.GAME_OVER) {
+          phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#F1F3F4] text-[#3C4043] mb-2';
+          phaseBadge.textContent = '挑戰結束';
+          phaseHint.textContent = '點擊下方按鈕回到初始畫面';
+          btnRestart.classList.remove('hidden');
+        }
+      }
+
+      // ===== 主遊戲迴圈 =====
+      function gameLoop(now) {
+        if (gameState === STATE.CALIBRATING) {
+          const isWithinLimit = currentTilt !== null && currentTilt <= tiltLimit;
+
+          if (isWithinLimit) {
+            if (calibStartTime === 0) {
+              calibStartTime = now;
+            }
+            const heldMs = now - calibStartTime;
+            const remainingSec = Math.max(0, (3000 - heldMs) / 1000);
+            const pct = Math.min(100, (heldMs / 3000) * 100);
+
+            stopwatchDisplay.textContent = `${remainingSec.toFixed(2)} 秒`;
+            calibProgressBar.style.width = `${pct}%`;
+
+            if (heldMs >= 3000) {
+              setGameState(STATE.RUNNING);
+            }
+          } else {
+            // 中途超出上限，3 秒倒數立刻歸零重算
+            calibStartTime = 0;
+            stopwatchDisplay.textContent = '3.00 秒';
+            calibProgressBar.style.width = '0%';
+          }
+        } else if (gameState === STATE.RUNNING) {
+          elapsedMs = now - runStartTime;
+          stopwatchDisplay.textContent = formatStopwatch(elapsedMs);
+
+          // 只要當前傾斜角度超過傾斜上限，立刻觸發 5 秒紅閃與急促蜂鳴
+          if (currentTilt !== null && currentTilt > tiltLimit) {
+            setGameState(STATE.ALARM);
+          }
+        }
+
+        rafId = requestAnimationFrame(gameLoop);
+      }
+
+      // ===== 按鈕事件綁定 =====
+      btnGrantIos.addEventListener('click', grantIosSensors);
+
+      btnResetLimit.addEventListener('click', () => {
+        ensureAudioContext();
+        if (currentTilt !== null) {
+          tiltLimit = Number(currentTilt.toFixed(1));
+          renderLimitUI();
+          renderAngleUI();
+        }
+      });
+
+      btnStart.addEventListener('click', () => {
+        ensureAudioContext();
+        setGameState(STATE.CALIBRATING);
+      });
+
+      btnRestart.addEventListener('click', () => {
+        ensureAudioContext();
+        // 回到需要再按一次開始的初始畫面（維持預設或目前設定上限）
+        setGameState(STATE.IDLE);
+      });
+
+      // ===== 初始化 =====
+      document.addEventListener('DOMContentLoaded', () => {
+        renderLimitUI();
+        setGameState(STATE.IDLE);
+        requestSensorsOnLoad();
+        rafId = requestAnimationFrame(gameLoop);
+      });
+    })();
   </script>
 </body>
 </html>
