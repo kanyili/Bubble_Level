@@ -134,7 +134,7 @@
       </div>
     </section>
 
-    <!-- 3. 3秒穩定倒數 / 碼表計時 / 5秒警報 主顯示區 -->
+    <!-- 3. 碼表計時 / 5秒警報 主顯示區 -->
     <section id="timer-card" class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-5 flex flex-col items-center justify-center flex-1 max-h-56">
       <div id="phase-badge" class="px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#E8F0FE] text-[#1967D2] mb-2">
         準備就緒
@@ -145,15 +145,8 @@
         00:00.000
       </div>
 
-      <!-- 3秒穩定準備進度條（僅在準備期顯示） -->
-      <div id="calib-bar-wrap" class="hidden w-full max-w-xs mt-2">
-        <div class="w-full h-2.5 bg-[#E8F0FE] rounded-full overflow-hidden">
-          <div id="calib-progress-bar" class="h-full bg-[#FBBC05] rounded-full" style="width: 0%;"></div>
-        </div>
-      </div>
-
       <p id="phase-hint" class="alarm-text-override text-xs sm:text-sm font-medium text-[#5F6368] mt-2 text-center">
-        維持傾斜小於上限滿 3 秒自動鳴笛計時
+        按下「開始挑戰」立即鳴笛開始計時
       </p>
     </section>
 
@@ -186,7 +179,6 @@
     (() => {
       const STATE = {
         IDLE: 'IDLE',
-        CALIBRATING: 'CALIBRATING',
         RUNNING: 'RUNNING',
         ALARM: 'ALARM',
         GAME_OVER: 'GAME_OVER'
@@ -197,12 +189,11 @@
       let currentTilt = null;      // 當前最新傾斜角度 (0 ~ 90)
       let sensorActive = false;
 
-      let calibStartTime = 0;
       let runStartTime = 0;
       let elapsedMs = 0;
       let rafId = null;
       let alarmTimeoutId = null;
-      let alarmBeepIntervalId = null;
+      let alarmWhistleNodes = null;
 
       const appBody = document.getElementById('app-body');
       const iosOverlay = document.getElementById('ios-permission-overlay');
@@ -215,8 +206,6 @@
 
       const phaseBadge = document.getElementById('phase-badge');
       const stopwatchDisplay = document.getElementById('stopwatch-display');
-      const calibBarWrap = document.getElementById('calib-bar-wrap');
-      const calibProgressBar = document.getElementById('calib-progress-bar');
       const phaseHint = document.getElementById('phase-hint');
 
       const idleControls = document.getElementById('idle-controls');
@@ -239,16 +228,12 @@
         }
       }
 
-      // 裁判吹哨音效（雙音共鳴 + 氣流顫音，清脆響亮）
-      function playRefereeWhistle() {
-        ensureAudioContext();
-        if (!audioCtx) return;
+      // 產生單次裁判吹哨聲片段（可指定起始時間與吹奏長度）
+      function scheduleWhistleBlast(startTime, duration, peakGain = 0.48) {
+        if (!audioCtx) return [];
+        const createdNodes = [];
 
-        const now = audioCtx.currentTime;
-        const blastDuration = 0.42;
-
-        // 吹哨氣流噪聲（讓起音更有真實哨子氣感）
-        const noiseBufferSize = Math.floor(audioCtx.sampleRate * blastDuration);
+        const noiseBufferSize = Math.max(1, Math.floor(audioCtx.sampleRate * duration));
         const noiseBuffer = audioCtx.createBuffer(1, noiseBufferSize, audioCtx.sampleRate);
         const noiseData = noiseBuffer.getChannelData(0);
         for (let i = 0; i < noiseBufferSize; i++) {
@@ -260,22 +245,22 @@
 
         const noiseFilter = audioCtx.createBiquadFilter();
         noiseFilter.type = 'bandpass';
-        noiseFilter.frequency.setValueAtTime(2950, now);
-        noiseFilter.Q.setValueAtTime(8, now);
+        noiseFilter.frequency.setValueAtTime(2950, startTime);
+        noiseFilter.Q.setValueAtTime(8, startTime);
 
         const noiseGain = audioCtx.createGain();
-        noiseGain.gain.setValueAtTime(0.001, now);
-        noiseGain.gain.linearRampToValueAtTime(0.18, now + 0.02);
-        noiseGain.gain.setValueAtTime(0.14, now + blastDuration - 0.08);
-        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + blastDuration);
+        noiseGain.gain.setValueAtTime(0.001, startTime);
+        noiseGain.gain.linearRampToValueAtTime(Math.min(0.22, peakGain * 0.38), startTime + 0.02);
+        noiseGain.gain.setValueAtTime(Math.min(0.18, peakGain * 0.3), startTime + Math.max(0.03, duration - 0.08));
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
         noiseSource.connect(noiseFilter);
         noiseFilter.connect(noiseGain);
         noiseGain.connect(audioCtx.destination);
-        noiseSource.start(now);
-        noiseSource.stop(now + blastDuration + 0.02);
+        noiseSource.start(startTime);
+        noiseSource.stop(startTime + duration + 0.02);
+        createdNodes.push(noiseSource);
 
-        // 哨腔雙高頻共鳴音（約 2780Hz 與 3120Hz）+ 滾珠顫音調變
         const whistleOsc1 = audioCtx.createOscillator();
         const whistleOsc2 = audioCtx.createOscillator();
         const lfo = audioCtx.createOscillator();
@@ -284,77 +269,84 @@
 
         whistleOsc1.type = 'sine';
         whistleOsc2.type = 'triangle';
-        whistleOsc1.frequency.setValueAtTime(2780, now);
-        whistleOsc1.frequency.linearRampToValueAtTime(2860, now + 0.08);
-        whistleOsc1.frequency.setValueAtTime(2820, now + blastDuration - 0.05);
+        whistleOsc1.frequency.setValueAtTime(2780, startTime);
+        whistleOsc1.frequency.linearRampToValueAtTime(2860, startTime + Math.min(0.08, duration * 0.25));
+        whistleOsc1.frequency.setValueAtTime(2820, startTime + Math.max(0.02, duration - 0.05));
 
-        whistleOsc2.frequency.setValueAtTime(3140, now);
-        whistleOsc2.frequency.linearRampToValueAtTime(3220, now + 0.08);
-        whistleOsc2.frequency.setValueAtTime(3180, now + blastDuration - 0.05);
+        whistleOsc2.frequency.setValueAtTime(3140, startTime);
+        whistleOsc2.frequency.linearRampToValueAtTime(3220, startTime + Math.min(0.08, duration * 0.25));
+        whistleOsc2.frequency.setValueAtTime(3180, startTime + Math.max(0.02, duration - 0.05));
 
-        // 模擬裁判哨內滾珠顫動（約 38Hz）
         lfo.type = 'sine';
-        lfo.frequency.setValueAtTime(38, now);
-        lfoGain.gain.setValueAtTime(95, now);
+        lfo.frequency.setValueAtTime(38, startTime);
+        lfoGain.gain.setValueAtTime(95, startTime);
         lfo.connect(lfoGain);
         lfoGain.connect(whistleOsc1.frequency);
         lfoGain.connect(whistleOsc2.frequency);
 
         const osc2Mix = audioCtx.createGain();
-        osc2Mix.gain.setValueAtTime(0.35, now);
+        osc2Mix.gain.setValueAtTime(0.35, startTime);
 
-        whistleGain.gain.setValueAtTime(0.001, now);
-        whistleGain.gain.linearRampToValueAtTime(0.48, now + 0.018);
-        whistleGain.gain.setValueAtTime(0.44, now + blastDuration - 0.07);
-        whistleGain.gain.exponentialRampToValueAtTime(0.001, now + blastDuration);
+        whistleGain.gain.setValueAtTime(0.001, startTime);
+        whistleGain.gain.linearRampToValueAtTime(peakGain, startTime + 0.018);
+        whistleGain.gain.setValueAtTime(peakGain * 0.92, startTime + Math.max(0.03, duration - 0.07));
+        whistleGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
         whistleOsc1.connect(whistleGain);
         whistleOsc2.connect(osc2Mix);
         osc2Mix.connect(whistleGain);
         whistleGain.connect(audioCtx.destination);
 
-        lfo.start(now);
-        whistleOsc1.start(now);
-        whistleOsc2.start(now);
+        lfo.start(startTime);
+        whistleOsc1.start(startTime);
+        whistleOsc2.start(startTime);
 
-        lfo.stop(now + blastDuration + 0.02);
-        whistleOsc1.stop(now + blastDuration + 0.02);
-        whistleOsc2.stop(now + blastDuration + 0.02);
+        lfo.stop(startTime + duration + 0.02);
+        whistleOsc1.stop(startTime + duration + 0.02);
+        whistleOsc2.stop(startTime + duration + 0.02);
+
+        createdNodes.push(lfo, whistleOsc1, whistleOsc2);
+        return createdNodes;
       }
 
-      // 急促蜂鳴警報聲（持續 5 秒）
-      function startAlarmSound() {
+      // 開賽裁判吹哨音效
+      function playRefereeWhistle() {
         ensureAudioContext();
-        stopAlarmSound();
-
-        const triggerSingleBeep = () => {
-          if (!audioCtx) return;
-          const now = audioCtx.currentTime;
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-
-          osc.type = 'square';
-          osc.frequency.setValueAtTime(980, now);
-          osc.frequency.setValueAtTime(760, now + 0.055);
-
-          gain.gain.setValueAtTime(0.42, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
-
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-
-          osc.start(now);
-          osc.stop(now + 0.115);
-        };
-
-        triggerSingleBeep();
-        alarmBeepIntervalId = setInterval(triggerSingleBeep, 150);
+        if (!audioCtx) return;
+        scheduleWhistleBlast(audioCtx.currentTime, 0.42, 0.48);
       }
 
-      function stopAlarmSound() {
-        if (alarmBeepIntervalId) {
-          clearInterval(alarmBeepIntervalId);
-          alarmBeepIntervalId = null;
+      // 超限警報：持續 5 秒的急促裁判哨聲組
+      function startFiveSecondRefereeWhistle() {
+        ensureAudioContext();
+        stopFiveSecondRefereeWhistle();
+        if (!audioCtx) return;
+
+        const now = audioCtx.currentTime;
+        const totalWindow = 5.0;
+        const cycleDuration = 0.25; // 每 0.25 秒一組短促哨音（0.16s 吹哨 + 0.09s 換氣）
+        const blastLen = 0.16;
+        const nodes = [];
+
+        for (let t = 0; t + 0.05 < totalWindow; t += cycleDuration) {
+          const remaining = totalWindow - t;
+          const actualLen = Math.min(blastLen, remaining);
+          const blastNodes = scheduleWhistleBlast(now + t, actualLen, 0.52);
+          nodes.push(...blastNodes);
+        }
+
+        alarmWhistleNodes = nodes;
+      }
+
+      function stopFiveSecondRefereeWhistle() {
+        if (alarmWhistleNodes && alarmWhistleNodes.length > 0) {
+          alarmWhistleNodes.forEach(node => {
+            try {
+              node.stop();
+              node.disconnect();
+            } catch (_) {}
+          });
+          alarmWhistleNodes = null;
         }
       }
 
@@ -494,7 +486,6 @@
         idleControls.classList.add('hidden');
         activeStatusBar.classList.add('hidden');
         btnRestart.classList.add('hidden');
-        calibBarWrap.classList.add('hidden');
         appBody.classList.remove('alarm-active');
 
         if (nextState === STATE.IDLE) {
@@ -502,19 +493,11 @@
           stopwatchDisplay.textContent = '00:00.000';
           phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#E8F0FE] text-[#1967D2] mb-2';
           phaseBadge.textContent = '準備就緒';
-          phaseHint.textContent = '維持傾斜小於上限滿 3 秒自動鳴笛計時';
+          phaseHint.textContent = '按下「開始挑戰」立即鳴笛開始計時';
           idleControls.classList.remove('hidden');
-        } else if (nextState === STATE.CALIBRATING) {
-          calibStartTime = 0;
-          stopwatchDisplay.textContent = '3.00 秒';
-          phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#FEF7E0] text-[#B06000] mb-2';
-          phaseBadge.textContent = '穩定倒數中';
-          phaseHint.textContent = `請將手機傾斜維持在 ${tiltLimit.toFixed(1)}° 以內連續 3 秒`;
-          calibBarWrap.classList.remove('hidden');
-          calibProgressBar.style.width = '0%';
-          activeStatusBar.textContent = '保持穩定，滿 3 秒即鳴笛開始...';
-          activeStatusBar.classList.remove('hidden');
         } else if (nextState === STATE.RUNNING) {
+          elapsedMs = 0;
+          stopwatchDisplay.textContent = '00:00.000';
           runStartTime = performance.now();
           phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#E6F4EA] text-[#137333] mb-2';
           phaseBadge.textContent = '計時進行中';
@@ -523,19 +506,20 @@
           activeStatusBar.classList.remove('hidden');
           playRefereeWhistle();
         } else if (nextState === STATE.ALARM) {
+          // 立刻凍結碼表在超限瞬間的 elapsedMs
           stopwatchDisplay.textContent = formatStopwatch(elapsedMs);
           phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#FCE8E6] text-[#C5221F] mb-2';
           phaseBadge.textContent = '超過傾斜上限！';
           phaseHint.textContent = '警報鎖定 5 秒鐘，請稍候...';
-          activeStatusBar.textContent = '警報鳴響中（5 秒）...';
+          activeStatusBar.textContent = '紅閃與哨聲警報中（5 秒）...';
           activeStatusBar.classList.remove('hidden');
 
           appBody.classList.add('alarm-active');
-          startAlarmSound();
+          startFiveSecondRefereeWhistle();
 
           if (alarmTimeoutId) clearTimeout(alarmTimeoutId);
           alarmTimeoutId = setTimeout(() => {
-            stopAlarmSound();
+            stopFiveSecondRefereeWhistle();
             setGameState(STATE.GAME_OVER);
           }, 5000);
         } else if (nextState === STATE.GAME_OVER) {
@@ -547,29 +531,7 @@
       }
 
       function gameLoop(now) {
-        if (gameState === STATE.CALIBRATING) {
-          const isWithinLimit = currentTilt !== null && currentTilt <= tiltLimit;
-
-          if (isWithinLimit) {
-            if (calibStartTime === 0) {
-              calibStartTime = now;
-            }
-            const heldMs = now - calibStartTime;
-            const remainingSec = Math.max(0, (3000 - heldMs) / 1000);
-            const pct = Math.min(100, (heldMs / 3000) * 100);
-
-            stopwatchDisplay.textContent = `${remainingSec.toFixed(2)} 秒`;
-            calibProgressBar.style.width = `${pct}%`;
-
-            if (heldMs >= 3000) {
-              setGameState(STATE.RUNNING);
-            }
-          } else {
-            calibStartTime = 0;
-            stopwatchDisplay.textContent = '3.00 秒';
-            calibProgressBar.style.width = '0%';
-          }
-        } else if (gameState === STATE.RUNNING) {
+        if (gameState === STATE.RUNNING) {
           elapsedMs = now - runStartTime;
           stopwatchDisplay.textContent = formatStopwatch(elapsedMs);
 
@@ -594,7 +556,7 @@
 
       btnStart.addEventListener('click', () => {
         ensureAudioContext();
-        setGameState(STATE.CALIBRATING);
+        setGameState(STATE.RUNNING);
       });
 
       btnRestart.addEventListener('click', () => {
