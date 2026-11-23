@@ -57,6 +57,17 @@
     .btn-press:active {
       transform: scale(0.97);
     }
+
+    .safe-space-track {
+      background-color: #EEF1F5;
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(218, 220, 224, 0.45),
+        rgba(218, 220, 224, 0.45) 6px,
+        transparent 6px,
+        transparent 12px
+      );
+    }
   </style>
 </head>
 <body id="app-body" class="h-[100dvh] w-screen flex flex-col justify-between">
@@ -100,7 +111,7 @@
       </div>
     </section>
 
-    <!-- 2. 當前最新傾斜角度卡片（溫度計概念：最小值 0° ~ 最大值 傾斜上限，不顯示百分比） -->
+    <!-- 2. 當前最新傾斜角度卡片 -->
     <section class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-5 flex flex-col items-center justify-center relative">
       <span class="alarm-text-override text-sm sm:text-base font-bold text-[#5F6368] tracking-wide mb-1">當前最新傾斜角度</span>
       <div class="flex items-baseline justify-center my-1">
@@ -108,10 +119,13 @@
         <span class="alarm-text-override text-3xl sm:text-4xl font-bold text-[#5F6368] ml-1">°</span>
       </div>
 
-      <!-- 溫度計式橫向 Bar（0° 至 傾斜上限） -->
+      <!-- 橫向 Bar（0° 至 傾斜上限，無多餘標記文字） -->
       <div class="w-full mt-3">
-        <div class="w-full h-3.5 bg-[#F1F3F4] rounded-full overflow-hidden border border-[#E8EAED]">
-          <div id="angle-progress-bar" class="h-full bg-[#4285F4] rounded-full transition-all duration-75" style="width: 0%;"></div>
+        <div class="relative w-full h-5 safe-space-track rounded-full overflow-hidden border border-[#DADCE0] shadow-inner">
+          <div id="angle-progress-bar" class="h-full bg-[#4285F4] rounded-r-full" style="width: 0%; transition: width 50ms linear, background-color 120ms ease;"></div>
+          <div class="pointer-events-none absolute inset-y-0 left-1/4 w-px bg-black/10"></div>
+          <div class="pointer-events-none absolute inset-y-0 left-2/4 w-px bg-black/15"></div>
+          <div class="pointer-events-none absolute inset-y-0 left-3/4 w-px bg-black/10"></div>
         </div>
         <div class="flex justify-between items-center text-xs font-medium text-[#80868B] mt-1.5 px-0.5">
           <span>0°</span>
@@ -404,7 +418,6 @@
         barLimitLabel.textContent = `上限 ${tiltLimit.toFixed(1)}°`;
       }
 
-      // 溫度計概念：0° 為最低值，tiltLimit 為最高值
       function renderAngleUI() {
         if (currentTilt === null) {
           currentAngleDisplay.textContent = '--.-';
@@ -416,7 +429,7 @@
 
         const rawRatio = tiltLimit > 0 ? (currentTilt / tiltLimit) * 100 : 100;
         const barWidthPct = Math.max(0, Math.min(100, rawRatio));
-        angleProgressBar.style.width = `${barWidthPct}%`;
+        angleProgressBar.style.width = `${barWidthPct.toFixed(2)}%`;
 
         if (currentTilt > tiltLimit) {
           currentAngleDisplay.classList.remove('text-[#202124]');
