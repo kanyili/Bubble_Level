@@ -119,10 +119,10 @@
         <span class="alarm-text-override text-3xl sm:text-4xl font-bold text-[#5F6368] ml-1">°</span>
       </div>
 
-      <!-- 橫向 Bar（0° 至 傾斜上限，無多餘標記文字） -->
+      <!-- 橫向 Bar（0° 至 傾斜上限，即時零延遲變化） -->
       <div class="w-full mt-3">
         <div class="relative w-full h-5 safe-space-track rounded-full overflow-hidden border border-[#DADCE0] shadow-inner">
-          <div id="angle-progress-bar" class="h-full bg-[#4285F4] rounded-r-full" style="width: 0%; transition: width 50ms linear, background-color 120ms ease;"></div>
+          <div id="angle-progress-bar" class="h-full bg-[#4285F4] rounded-r-full" style="width: 0%; transition: background-color 120ms ease;"></div>
           <div class="pointer-events-none absolute inset-y-0 left-1/4 w-px bg-black/10"></div>
           <div class="pointer-events-none absolute inset-y-0 left-2/4 w-px bg-black/15"></div>
           <div class="pointer-events-none absolute inset-y-0 left-3/4 w-px bg-black/10"></div>
@@ -195,7 +195,6 @@
       let gameState = STATE.IDLE;
       let tiltLimit = 30.0;        // 預設傾斜上限 30 度
       let currentTilt = null;      // 當前最新傾斜角度 (0 ~ 90)
-      let smoothedTilt = null;
       let sensorActive = false;
 
       let calibStartTime = 0;
@@ -314,14 +313,7 @@
 
       function updateTiltReading(rawAngle) {
         if (typeof rawAngle !== 'number' || Number.isNaN(rawAngle)) return;
-        const clamped = Math.max(0, Math.min(90, rawAngle));
-
-        if (smoothedTilt === null) {
-          smoothedTilt = clamped;
-        } else {
-          smoothedTilt = smoothedTilt * 0.25 + clamped * 0.75;
-        }
-        currentTilt = smoothedTilt;
+        currentTilt = Math.max(0, Math.min(90, rawAngle));
         sensorActive = true;
 
         renderAngleUI();
