@@ -100,7 +100,7 @@
       </div>
     </section>
 
-    <!-- 2. 當前最新傾斜角度卡片（溫度計概念：最小值 0° ~ 最大值 傾斜上限） -->
+    <!-- 2. 當前最新傾斜角度卡片（溫度計概念：最小值 0° ~ 最大值 傾斜上限，不顯示百分比） -->
     <section class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-5 flex flex-col items-center justify-center relative">
       <span class="alarm-text-override text-sm sm:text-base font-bold text-[#5F6368] tracking-wide mb-1">當前最新傾斜角度</span>
       <div class="flex items-baseline justify-center my-1">
@@ -115,7 +115,6 @@
         </div>
         <div class="flex justify-between items-center text-xs font-medium text-[#80868B] mt-1.5 px-0.5">
           <span>0°</span>
-          <span id="thermometer-ratio-label" class="font-mono-tabular text-[#5F6368]">0%</span>
           <span id="bar-limit-label" class="font-semibold text-[#34A853]">上限 30.0°</span>
         </div>
       </div>
@@ -198,7 +197,6 @@
 
       const limitAngleDisplay = document.getElementById('limit-angle-display');
       const barLimitLabel = document.getElementById('bar-limit-label');
-      const thermometerRatioLabel = document.getElementById('thermometer-ratio-label');
       const currentAngleDisplay = document.getElementById('current-angle-display');
       const angleProgressBar = document.getElementById('angle-progress-bar');
 
@@ -406,12 +404,11 @@
         barLimitLabel.textContent = `上限 ${tiltLimit.toFixed(1)}°`;
       }
 
-      // 溫度計概念：0° 為最低值 (0%)，tiltLimit 為最高值 (100%)
+      // 溫度計概念：0° 為最低值，tiltLimit 為最高值
       function renderAngleUI() {
         if (currentTilt === null) {
           currentAngleDisplay.textContent = '--.-';
           angleProgressBar.style.width = '0%';
-          thermometerRatioLabel.textContent = '0%';
           return;
         }
 
@@ -420,7 +417,6 @@
         const rawRatio = tiltLimit > 0 ? (currentTilt / tiltLimit) * 100 : 100;
         const barWidthPct = Math.max(0, Math.min(100, rawRatio));
         angleProgressBar.style.width = `${barWidthPct}%`;
-        thermometerRatioLabel.textContent = `${Math.round(rawRatio)}%`;
 
         if (currentTilt > tiltLimit) {
           currentAngleDisplay.classList.remove('text-[#202124]');
