@@ -239,40 +239,87 @@
         }
       }
 
-      // 起跑號角音效
-      function playStartHorn() {
+      // 裁判吹哨音效（雙音共鳴 + 氣流顫音，清脆響亮）
+      function playRefereeWhistle() {
         ensureAudioContext();
         if (!audioCtx) return;
 
         const now = audioCtx.currentTime;
-        const notes = [
-          { freqs: [440, 554.37, 659.25], start: 0.0, duration: 0.14, gain: 0.45 },
-          { freqs: [587.33, 739.99, 880], start: 0.17, duration: 0.52, gain: 0.55 }
-        ];
+        const blastDuration = 0.42;
 
-        notes.forEach(note => {
-          const masterGain = audioCtx.createGain();
-          masterGain.gain.setValueAtTime(0.001, now + note.start);
-          masterGain.gain.linearRampToValueAtTime(note.gain, now + note.start + 0.02);
-          masterGain.gain.setValueAtTime(note.gain, now + note.start + note.duration - 0.06);
-          masterGain.gain.exponentialRampToValueAtTime(0.001, now + note.start + note.duration);
+        // 吹哨氣流噪聲（讓起音更有真實哨子氣感）
+        const noiseBufferSize = Math.floor(audioCtx.sampleRate * blastDuration);
+        const noiseBuffer = audioCtx.createBuffer(1, noiseBufferSize, audioCtx.sampleRate);
+        const noiseData = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < noiseBufferSize; i++) {
+          noiseData[i] = Math.random() * 2 - 1;
+        }
 
-          const filter = audioCtx.createBiquadFilter();
-          filter.type = 'lowpass';
-          filter.frequency.setValueAtTime(2400, now + note.start);
+        const noiseSource = audioCtx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
 
-          masterGain.connect(filter);
-          filter.connect(audioCtx.destination);
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'bandpass';
+        noiseFilter.frequency.setValueAtTime(2950, now);
+        noiseFilter.Q.setValueAtTime(8, now);
 
-          note.freqs.forEach(freq => {
-            const osc = audioCtx.createOscillator();
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(freq, now + note.start);
-            osc.connect(masterGain);
-            osc.start(now + note.start);
-            osc.stop(now + note.start + note.duration + 0.02);
-          });
-        });
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime(0.001, now);
+        noiseGain.gain.linearRampToValueAtTime(0.18, now + 0.02);
+        noiseGain.gain.setValueAtTime(0.14, now + blastDuration - 0.08);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + blastDuration);
+
+        noiseSource.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(audioCtx.destination);
+        noiseSource.start(now);
+        noiseSource.stop(now + blastDuration + 0.02);
+
+        // 哨腔雙高頻共鳴音（約 2780Hz 與 3120Hz）+ 滾珠顫音調變
+        const whistleOsc1 = audioCtx.createOscillator();
+        const whistleOsc2 = audioCtx.createOscillator();
+        const lfo = audioCtx.createOscillator();
+        const lfoGain = audioCtx.createGain();
+        const whistleGain = audioCtx.createGain();
+
+        whistleOsc1.type = 'sine';
+        whistleOsc2.type = 'triangle';
+        whistleOsc1.frequency.setValueAtTime(2780, now);
+        whistleOsc1.frequency.linearRampToValueAtTime(2860, now + 0.08);
+        whistleOsc1.frequency.setValueAtTime(2820, now + blastDuration - 0.05);
+
+        whistleOsc2.frequency.setValueAtTime(3140, now);
+        whistleOsc2.frequency.linearRampToValueAtTime(3220, now + 0.08);
+        whistleOsc2.frequency.setValueAtTime(3180, now + blastDuration - 0.05);
+
+        // 模擬裁判哨內滾珠顫動（約 38Hz）
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(38, now);
+        lfoGain.gain.setValueAtTime(95, now);
+        lfo.connect(lfoGain);
+        lfoGain.connect(whistleOsc1.frequency);
+        lfoGain.connect(whistleOsc2.frequency);
+
+        const osc2Mix = audioCtx.createGain();
+        osc2Mix.gain.setValueAtTime(0.35, now);
+
+        whistleGain.gain.setValueAtTime(0.001, now);
+        whistleGain.gain.linearRampToValueAtTime(0.48, now + 0.018);
+        whistleGain.gain.setValueAtTime(0.44, now + blastDuration - 0.07);
+        whistleGain.gain.exponentialRampToValueAtTime(0.001, now + blastDuration);
+
+        whistleOsc1.connect(whistleGain);
+        whistleOsc2.connect(osc2Mix);
+        osc2Mix.connect(whistleGain);
+        whistleGain.connect(audioCtx.destination);
+
+        lfo.start(now);
+        whistleOsc1.start(now);
+        whistleOsc2.start(now);
+
+        lfo.stop(now + blastDuration + 0.02);
+        whistleOsc1.stop(now + blastDuration + 0.02);
+        whistleOsc2.stop(now + blastDuration + 0.02);
       }
 
       // 急促蜂鳴警報聲（持續 5 秒）
@@ -474,7 +521,7 @@
           phaseHint.textContent = `警戒線：${tiltLimit.toFixed(1)}°（超過即刻停止）`;
           activeStatusBar.textContent = '計時中！切勿超過傾斜上限';
           activeStatusBar.classList.remove('hidden');
-          playStartHorn();
+          playRefereeWhistle();
         } else if (nextState === STATE.ALARM) {
           stopwatchDisplay.textContent = formatStopwatch(elapsedMs);
           phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#FCE8E6] text-[#C5221F] mb-2';
