@@ -85,14 +85,14 @@
     </button>
   </div>
 
-  <!-- 主要內容區（無頂部標題與狀態欄，空間完整留給數據呈現） -->
+  <!-- 主要內容區 -->
   <main class="flex-1 flex flex-col justify-center gap-4 px-4 pt-3 pb-2 max-w-md w-full mx-auto overflow-hidden">
 
-    <!-- 1. 傾斜上限卡片（放大文字與數字） -->
+    <!-- 1. 傾斜上限卡片 -->
     <section class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-4 flex items-center justify-between">
       <div class="flex flex-col">
         <span class="alarm-text-override text-xl sm:text-2xl font-black text-[#202124] tracking-tight">傾斜上限</span>
-        <span id="limit-subtext" class="text-xs sm:text-sm font-medium text-[#5F6368] mt-0.5">超過此角度即觸發警報</span>
+        <span class="text-xs sm:text-sm font-medium text-[#5F6368] mt-0.5">超過此角度即觸發警報</span>
       </div>
       <div class="flex items-baseline">
         <span id="limit-angle-display" class="alarm-text-override font-mono-tabular text-5xl sm:text-6xl font-bold text-[#34A853] tracking-tight">30.0</span>
@@ -100,7 +100,7 @@
       </div>
     </section>
 
-    <!-- 2. 當前最新傾斜角度卡片 -->
+    <!-- 2. 當前最新傾斜角度卡片（溫度計概念：最小值 0° ~ 最大值 傾斜上限） -->
     <section class="card-surface bg-white rounded-3xl border border-[#DADCE0] shadow-sm px-5 py-5 flex flex-col items-center justify-center relative">
       <span class="alarm-text-override text-sm sm:text-base font-bold text-[#5F6368] tracking-wide mb-1">當前最新傾斜角度</span>
       <div class="flex items-baseline justify-center my-1">
@@ -108,14 +108,15 @@
         <span class="alarm-text-override text-3xl sm:text-4xl font-bold text-[#5F6368] ml-1">°</span>
       </div>
 
-      <!-- 角度比例視覺條 -->
+      <!-- 溫度計式橫向 Bar（0° 至 傾斜上限） -->
       <div class="w-full mt-3">
-        <div class="w-full h-3 bg-[#F1F3F4] rounded-full overflow-hidden">
+        <div class="w-full h-3.5 bg-[#F1F3F4] rounded-full overflow-hidden border border-[#E8EAED]">
           <div id="angle-progress-bar" class="h-full bg-[#4285F4] rounded-full transition-all duration-75" style="width: 0%;"></div>
         </div>
-        <div class="flex justify-between text-xs font-medium text-[#80868B] mt-1.5 px-0.5">
-          <span>0° 水平</span>
-          <span id="bar-limit-label">上限 30.0°</span>
+        <div class="flex justify-between items-center text-xs font-medium text-[#80868B] mt-1.5 px-0.5">
+          <span>0°</span>
+          <span id="thermometer-ratio-label" class="font-mono-tabular text-[#5F6368]">0%</span>
+          <span id="bar-limit-label" class="font-semibold text-[#34A853]">上限 30.0°</span>
         </div>
       </div>
     </section>
@@ -157,7 +158,7 @@
       </button>
     </div>
 
-    <!-- 進行中提示（準備期 / 計時中 / 5秒警報鎖定期間） -->
+    <!-- 進行中提示 -->
     <div id="active-status-bar" class="hidden py-4 px-4 rounded-2xl bg-white border border-[#DADCE0] text-center font-bold text-base text-[#5F6368]">
       偵測進行中...
     </div>
@@ -170,7 +171,6 @@
 
   <script>
     (() => {
-      // ===== 遊戲核心狀態 =====
       const STATE = {
         IDLE: 'IDLE',
         CALIBRATING: 'CALIBRATING',
@@ -182,10 +182,9 @@
       let gameState = STATE.IDLE;
       let tiltLimit = 30.0;        // 預設傾斜上限 30 度
       let currentTilt = null;      // 當前最新傾斜角度 (0 ~ 90)
-      let smoothedTilt = null;     // 輕微低通濾波抑制感測器高頻抖動
+      let smoothedTilt = null;
       let sensorActive = false;
 
-      // 計時相關變數
       let calibStartTime = 0;
       let runStartTime = 0;
       let elapsedMs = 0;
@@ -193,13 +192,13 @@
       let alarmTimeoutId = null;
       let alarmBeepIntervalId = null;
 
-      // ===== DOM 元素參照 =====
       const appBody = document.getElementById('app-body');
       const iosOverlay = document.getElementById('ios-permission-overlay');
       const btnGrantIos = document.getElementById('btn-grant-ios');
 
       const limitAngleDisplay = document.getElementById('limit-angle-display');
       const barLimitLabel = document.getElementById('bar-limit-label');
+      const thermometerRatioLabel = document.getElementById('thermometer-ratio-label');
       const currentAngleDisplay = document.getElementById('current-angle-display');
       const angleProgressBar = document.getElementById('angle-progress-bar');
 
@@ -215,7 +214,6 @@
       const activeStatusBar = document.getElementById('active-status-bar');
       const btnRestart = document.getElementById('btn-restart');
 
-      // ===== Web Audio API 音效引擎（起跑號角 & 急促蜂鳴） =====
       let audioCtx = null;
 
       function ensureAudioContext() {
@@ -230,13 +228,12 @@
         }
       }
 
-      // 大聲起跑號角音效（雙銅管和弦 + 飽滿增益）
+      // 起跑號角音效
       function playStartHorn() {
         ensureAudioContext();
         if (!audioCtx) return;
 
         const now = audioCtx.currentTime;
-        // 起跑號角兩段式鳴響：短促預備音 + 長鳴起跑號角
         const notes = [
           { freqs: [440, 554.37, 659.25], start: 0.0, duration: 0.14, gain: 0.45 },
           { freqs: [587.33, 739.99, 880], start: 0.17, duration: 0.52, gain: 0.55 }
@@ -249,7 +246,6 @@
           masterGain.gain.setValueAtTime(note.gain, now + note.start + note.duration - 0.06);
           masterGain.gain.exponentialRampToValueAtTime(0.001, now + note.start + note.duration);
 
-          // 低通濾波讓鋸齒波更像真實銅管號角
           const filter = audioCtx.createBiquadFilter();
           filter.type = 'lowpass';
           filter.frequency.setValueAtTime(2400, now + note.start);
@@ -304,12 +300,10 @@
         }
       }
 
-      // ===== 感測器計算與權限啟動 =====
       function updateTiltReading(rawAngle) {
         if (typeof rawAngle !== 'number' || Number.isNaN(rawAngle)) return;
         const clamped = Math.max(0, Math.min(90, rawAngle));
 
-        // 輕微平滑處理，保留靈敏度同時過濾手部微顫噪點
         if (smoothedTilt === null) {
           smoothedTilt = clamped;
         } else {
@@ -321,7 +315,6 @@
         renderAngleUI();
       }
 
-      // 透過重力加速度向量計算相對於完全水平面的真實總傾斜角度 (0° ~ 90°)
       function handleDeviceMotion(event) {
         const acc = event.accelerationIncludingGravity;
         if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
@@ -330,13 +323,11 @@
         const magnitude = Math.sqrt(x * x + y * y + z * z);
         if (magnitude < 0.1) return;
 
-        // |z| / magnitude = cos(總傾斜角)
         const cosTheta = Math.max(-1, Math.min(1, Math.abs(z) / magnitude));
         const angleDeg = (Math.acos(cosTheta) * 180) / Math.PI;
         updateTiltReading(angleDeg);
       }
 
-      // 備援：若部分裝置僅提供 deviceorientation (beta / gamma)
       function handleDeviceOrientation(event) {
         if (sensorActive) return;
         if (event.beta === null || event.gamma === null) return;
@@ -366,10 +357,8 @@
           typeof DeviceOrientationEvent.requestPermission === 'function';
 
         if (needsIosMotionPerm || needsIosOrientPerm) {
-          // iOS 13+ 必須在使用者點擊事件中呼叫 requestPermission()
           iosOverlay.classList.remove('hidden');
         } else {
-          // Android / 一般支援免彈窗的行動瀏覽器：進入頁面立刻啟動並持續顯示最新角度
           attachSensorListeners();
         }
       }
@@ -400,7 +389,6 @@
         }
       }
 
-      // ===== 畫面更新與格式化 =====
       function formatStopwatch(ms) {
         const totalMs = Math.max(0, Math.floor(ms));
         const minutes = Math.floor(totalMs / 60000);
@@ -418,24 +406,28 @@
         barLimitLabel.textContent = `上限 ${tiltLimit.toFixed(1)}°`;
       }
 
+      // 溫度計概念：0° 為最低值 (0%)，tiltLimit 為最高值 (100%)
       function renderAngleUI() {
         if (currentTilt === null) {
           currentAngleDisplay.textContent = '--.-';
           angleProgressBar.style.width = '0%';
+          thermometerRatioLabel.textContent = '0%';
           return;
         }
 
         currentAngleDisplay.textContent = currentTilt.toFixed(1);
 
-        const ratio = tiltLimit > 0 ? Math.min(100, (currentTilt / tiltLimit) * 100) : 100;
-        angleProgressBar.style.width = `${ratio}%`;
+        const rawRatio = tiltLimit > 0 ? (currentTilt / tiltLimit) * 100 : 100;
+        const barWidthPct = Math.max(0, Math.min(100, rawRatio));
+        angleProgressBar.style.width = `${barWidthPct}%`;
+        thermometerRatioLabel.textContent = `${Math.round(rawRatio)}%`;
 
         if (currentTilt > tiltLimit) {
           currentAngleDisplay.classList.remove('text-[#202124]');
           currentAngleDisplay.classList.add('text-[#EA4335]');
           angleProgressBar.classList.remove('bg-[#4285F4]', 'bg-[#FBBC05]');
           angleProgressBar.classList.add('bg-[#EA4335]');
-        } else if (currentTilt > tiltLimit * 0.8) {
+        } else if (rawRatio >= 80) {
           currentAngleDisplay.classList.remove('text-[#EA4335]');
           currentAngleDisplay.classList.add('text-[#202124]');
           angleProgressBar.classList.remove('bg-[#4285F4]', 'bg-[#EA4335]');
@@ -448,11 +440,9 @@
         }
       }
 
-      // ===== 遊戲狀態切換 =====
       function setGameState(nextState) {
         gameState = nextState;
 
-        // 重置控制列顯示
         idleControls.classList.add('hidden');
         activeStatusBar.classList.add('hidden');
         btnRestart.classList.add('hidden');
@@ -485,7 +475,6 @@
           activeStatusBar.classList.remove('hidden');
           playStartHorn();
         } else if (nextState === STATE.ALARM) {
-          // 碼表凍結在當下的 elapsedMs
           stopwatchDisplay.textContent = formatStopwatch(elapsedMs);
           phaseBadge.className = 'px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#FCE8E6] text-[#C5221F] mb-2';
           phaseBadge.textContent = '超過傾斜上限！';
@@ -496,7 +485,6 @@
           appBody.classList.add('alarm-active');
           startAlarmSound();
 
-          // 鎖定 5 秒後進入結算並顯示重新開始按鈕
           if (alarmTimeoutId) clearTimeout(alarmTimeoutId);
           alarmTimeoutId = setTimeout(() => {
             stopAlarmSound();
@@ -510,7 +498,6 @@
         }
       }
 
-      // ===== 主遊戲迴圈 =====
       function gameLoop(now) {
         if (gameState === STATE.CALIBRATING) {
           const isWithinLimit = currentTilt !== null && currentTilt <= tiltLimit;
@@ -530,7 +517,6 @@
               setGameState(STATE.RUNNING);
             }
           } else {
-            // 中途超出上限，3 秒倒數立刻歸零重算
             calibStartTime = 0;
             stopwatchDisplay.textContent = '3.00 秒';
             calibProgressBar.style.width = '0%';
@@ -539,7 +525,6 @@
           elapsedMs = now - runStartTime;
           stopwatchDisplay.textContent = formatStopwatch(elapsedMs);
 
-          // 只要當前傾斜角度超過傾斜上限，立刻觸發 5 秒紅閃與急促蜂鳴
           if (currentTilt !== null && currentTilt > tiltLimit) {
             setGameState(STATE.ALARM);
           }
@@ -548,7 +533,6 @@
         rafId = requestAnimationFrame(gameLoop);
       }
 
-      // ===== 按鈕事件綁定 =====
       btnGrantIos.addEventListener('click', grantIosSensors);
 
       btnResetLimit.addEventListener('click', () => {
@@ -567,11 +551,9 @@
 
       btnRestart.addEventListener('click', () => {
         ensureAudioContext();
-        // 回到需要再按一次開始的初始畫面（維持預設或目前設定上限）
         setGameState(STATE.IDLE);
       });
 
-      // ===== 初始化 =====
       document.addEventListener('DOMContentLoaded', () => {
         renderLimitUI();
         setGameState(STATE.IDLE);
